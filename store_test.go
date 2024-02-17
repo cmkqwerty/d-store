@@ -49,6 +49,10 @@ func TestStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if ok := s.Has(key); !ok {
+		t.Fatalf("expected %s to exist", key)
+	}
+
 	r, err := s.Read(key)
 	if err != nil {
 		t.Fatal(err)
