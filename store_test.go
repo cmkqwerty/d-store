@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -14,8 +15,25 @@ func TestPathTransformFunc(t *testing.T) {
 	if actual.PathName != expectedPathName {
 		t.Fatalf("expected %s, got %s", expectedPathName, actual.PathName)
 	}
-	if actual.Original != expectedOriginalKey {
-		t.Fatalf("expected %s, got %s", expectedOriginalKey, actual.Original)
+	if actual.Filename != expectedOriginalKey {
+		t.Fatalf("expected %s, got %s", expectedOriginalKey, actual.Filename)
+	}
+}
+
+func TestStoreDeleteKey(t *testing.T) {
+	opts := StoreOpts{
+		PathTransformFunc: CASPathTransformFunc,
+	}
+	s := NewStore(opts)
+	key := "my-special-picture"
+	data := []byte("hello, world")
+
+	if err := s.writeStream("my-special-picture", bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Delete(key); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -24,9 +42,28 @@ func TestStore(t *testing.T) {
 		PathTransformFunc: CASPathTransformFunc,
 	}
 	s := NewStore(opts)
+	key := "my-special-picture"
+	data := []byte("hello, world")
 
-	data := bytes.NewReader([]byte("hello, world"))
-	if err := s.writeStream("my-special-picture", data); err != nil {
+	if err := s.writeStream("my-special-picture", bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := s.Read(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(b) != string(data) {
+		t.Fatalf("expected %s, got %s", data, b)
+	}
+
+	if err := s.Delete(key); err != nil {
 		t.Fatal(err)
 	}
 }
