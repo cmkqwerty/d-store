@@ -3,32 +3,37 @@ package main
 import (
 	"github.com/cmkqwerty/d-store/p2p"
 	"log"
-	"time"
 )
 
-func main() {
+func makeServer(listenAddr string, nodes ...string) *FileServer {
 	tcpTransportOpts := p2p.TCPTransportOpts{
-		ListenAddr:    ":3000",
+		ListenAddr:    listenAddr,
 		HandshakeFunc: p2p.NOPHandshakeFunc,
 		Decoder:       p2p.DefaultDecoder{},
-		// TODO: onPeer()
 	}
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 
 	fileServerOpts := FileServerOpts{
-		StorageRoot:       "3000_network",
+		StorageRoot:       listenAddr + "_network",
 		PathTransformFunc: CASPathTransformFunc,
 		Transport:         tcpTransport,
+		BootstrapNodes:    nodes,
 	}
 
 	fs := NewFileServer(fileServerOpts)
 
+	tcpTransport.OnPeer = fs.OnPeer
+
+	return fs
+}
+
+func main() {
+	s1 := makeServer(":3000", "")
+	s2 := makeServer(":4000", ":3000")
+
 	go func() {
-		time.Sleep(time.Second * 5)
-		fs.Stop()
+		log.Fatal(s1.Start())
 	}()
 
-	if err := fs.Start(); err != nil {
-		log.Fatalf("failed to start server: %v", err)
-	}
+	s2.Start()
 }
