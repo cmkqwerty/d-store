@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"github.com/cmkqwerty/d-store/p2p"
+	"io"
 	"log"
 	"sync"
 )
@@ -38,6 +41,46 @@ func NewFileServer(opts FileServerOpts) *FileServer {
 	}
 }
 
+type Message struct {
+	From    string
+	Payload any
+}
+
+type DataMessage struct {
+	Key  string
+	Data []byte
+}
+
+func (fs *FileServer) broadcast(msg *Message) error {
+	var peers []io.Writer
+	for _, peer := range fs.peers {
+		peers = append(peers, peer)
+	}
+
+	mw := io.MultiWriter(peers...)
+
+	return gob.NewEncoder(mw).Encode(msg)
+}
+
+func (fs *FileServer) StoreData(key string, r io.Reader) error {
+	buf := new(bytes.Buffer)
+	tee := io.TeeReader(r, buf)
+
+	if err := fs.store.Write(key, tee); err != nil {
+		return err
+	}
+
+	p := &DataMessage{
+		Key:  key,
+		Data: buf.Bytes(),
+	}
+
+	return fs.broadcast(&Message{
+		From:    "TODO",
+		Payload: p,
+	})
+}
+
 func (fs *FileServer) Stop() {
 	close(fs.quitch)
 }
@@ -62,11 +105,27 @@ func (fs *FileServer) loop() {
 	for {
 		select {
 		case msg := <-fs.Transport.Consume():
-			fmt.Println(msg)
+			var m Message
+			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
+				log.Printf("Failed to decode payload: %s\n", err)
+			}
+
+			if err := fs.handleMessage(&m); err != nil {
+				log.Printf("Failed to handle message: %s\n", err)
+			}
 		case <-fs.quitch:
 			return
 		}
 	}
+}
+
+func (fs *FileServer) handleMessage(msg *Message) error {
+	switch v := msg.Payload.(type) {
+	case *DataMessage:
+		fmt.Printf("Received data message: %s\n", v.Key)
+	}
+
+	return nil
 }
 
 func (fs *FileServer) bootstrapNetwork() error {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"github.com/cmkqwerty/d-store/p2p"
 	"log"
+	"time"
 )
 
 func makeServer(listenAddr string, nodes ...string) *FileServer {
@@ -35,5 +37,17 @@ func main() {
 		log.Fatal(s1.Start())
 	}()
 
-	s2.Start()
+	time.Sleep(2 * time.Second)
+
+	go func() {
+		log.Fatal(s2.Start())
+	}()
+
+	time.Sleep(2 * time.Second)
+
+	data := bytes.NewReader([]byte("Hello, World!"))
+
+	s2.StoreData("myPrivateData", data)
+
+	select {}
 }
