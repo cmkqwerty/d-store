@@ -1,36 +1,53 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
 	"github.com/cmkqwerty/d-store/p2p"
 	"log"
+	"time"
 )
 
-func OnPeer(peer p2p.Peer) error {
-	fmt.Printf("Peer connected: %+v\n", peer)
-	return nil
+func makeServer(listenAddr string, nodes ...string) *FileServer {
+	tcpTransportOpts := p2p.TCPTransportOpts{
+		ListenAddr:    listenAddr,
+		HandshakeFunc: p2p.NOPHandshakeFunc,
+		Decoder:       p2p.DefaultDecoder{},
+	}
+	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
+
+	fileServerOpts := FileServerOpts{
+		StorageRoot:       listenAddr + "_network",
+		PathTransformFunc: CASPathTransformFunc,
+		Transport:         tcpTransport,
+		BootstrapNodes:    nodes,
+	}
+
+	fs := NewFileServer(fileServerOpts)
+
+	tcpTransport.OnPeer = fs.OnPeer
+
+	return fs
 }
 
 func main() {
-	tcpOpts := p2p.TCPTransportOpts{
-		ListenAddr:    ":3000",
-		HandshakeFunc: p2p.NOPHandshakeFunc,
-		Decoder:       p2p.DefaultDecoder{},
-		OnPeer:        OnPeer,
-	}
-
-	tr := p2p.NewTCPTransport(tcpOpts)
+	s1 := makeServer(":3000", "")
+	s2 := makeServer(":4000", ":3000")
 
 	go func() {
-		for {
-			msg := <-tr.Consume()
-			fmt.Printf("Received message: %+v\n", msg)
-		}
+		log.Fatal(s1.Start())
 	}()
 
-	if err := tr.ListenAndAccept(); err != nil {
-		log.Fatalf("Error listening and accepting: %s", err)
-	}
+	time.Sleep(2 * time.Second)
+
+	go func() {
+		log.Fatal(s2.Start())
+	}()
+
+	time.Sleep(2 * time.Second)
+
+	data := bytes.NewReader([]byte("My secret big data file!"))
+
+	s2.StoreData("myPrivateData", data)
 
 	select {}
 }
