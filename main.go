@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/cmkqwerty/d-store/p2p"
+	"io"
 	"log"
 	"time"
 )
@@ -46,23 +46,19 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	for i := 0; i < 10; i++ {
-		data := bytes.NewReader([]byte("My secret big data file!"))
-		s2.Store(fmt.Sprintf("myPrivateData_%d", i), data)
-		time.Sleep(5 * time.Millisecond)
+	//data := bytes.NewReader([]byte("My secret big data file!"))
+	//s2.Store("picture.jpg", data)
+	//time.Sleep(5 * time.Millisecond)
+
+	r, err := s2.Get("picture.jpg")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	//r, err := s2.Get("myPrivateData")
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//b, err := io.ReadAll(r)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//fmt.Println(string(b))
+	b, err := io.ReadAll(r)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	select {}
+	fmt.Println(string(b))
 }
