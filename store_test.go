@@ -29,7 +29,7 @@ func TestStoreDeleteKey(t *testing.T) {
 	key := "my-special-picture"
 	data := []byte("hello, world")
 
-	if err := s.writeStream("my-special-picture", bytes.NewReader(data)); err != nil {
+	if _, err := s.writeStream("my-special-picture", bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -46,7 +46,7 @@ func TestStore(t *testing.T) {
 		key := fmt.Sprintf("secret_%d", i)
 		data := []byte("hello, world")
 
-		if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
+		if _, err := s.writeStream(key, bytes.NewReader(data)); err != nil {
 			t.Fatal(err)
 		}
 
@@ -54,7 +54,7 @@ func TestStore(t *testing.T) {
 			t.Fatalf("expected %s to exist", key)
 		}
 
-		r, err := s.Read(key)
+		_, r, err := s.Read(key)
 		if err != nil {
 			t.Fatal(err)
 		}
