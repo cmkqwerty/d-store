@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
@@ -103,44 +102,55 @@ func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
-func (s *Store) Read(key string) (io.Reader, error) {
-	f, err := s.readStream(key)
+func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader) (int64, error) {
+	f, err := s.openFileForWriting(key)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	defer f.Close()
 
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, f)
+	n, err := copyDecrypt(encKey, r, f)
 
-	return buf, err
+	return int64(n), err
 }
 
-func (s *Store) readStream(key string) (io.ReadCloser, error) {
-	pathKey := s.PathTransformFunc(key)
-	fullPathWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
-
-	return os.Open(fullPathWithRoot)
-}
-
-func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
+func (s *Store) openFileForWriting(key string) (*os.File, error) {
 	pathKey := s.PathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 	if err := os.MkdirAll(pathNameWithRoot, 0755); err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	fullPathWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
 
-	f, err := os.Create(fullPathWithRoot)
+	return os.Create(fullPathWithRoot)
+}
+
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
+	f, err := s.openFileForWriting(key)
 	if err != nil {
 		return 0, err
 	}
 
-	n, err := io.Copy(f, r)
+	return io.Copy(f, r)
+}
+
+func (s *Store) Read(key string) (int64, io.Reader, error) {
+	return s.readStream(key)
+}
+
+func (s *Store) readStream(key string) (int64, io.ReadCloser, error) {
+	pathKey := s.PathTransformFunc(key)
+	fullPathWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
+
+	file, err := os.Open(fullPathWithRoot)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
-	return n, nil
+	fi, err := file.Stat()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return fi.Size(), file, nil
 }
