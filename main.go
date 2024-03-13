@@ -1,9 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
 	"github.com/cmkqwerty/d-store/p2p"
-	"io"
 	"log"
 	"time"
 )
@@ -17,6 +16,7 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 
 	fileServerOpts := FileServerOpts{
+		EncKey:            newEncryptionKey(),
 		StorageRoot:       listenAddr + "_network",
 		PathTransformFunc: CASPathTransformFunc,
 		Transport:         tcpTransport,
@@ -46,19 +46,18 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	//data := bytes.NewReader([]byte("My secret big data file!"))
-	//s2.Store("picture.jpg", data)
-	//time.Sleep(5 * time.Millisecond)
+	data := bytes.NewReader([]byte("My secret big data file!"))
+	s2.Store("picture.jpg", data)
 
-	r, err := s2.Get("picture.jpg")
-	if err != nil {
-		log.Fatal(err)
-	}
+	//r, err := s2.Get("picture.jpg")
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//b, err := io.ReadAll(r)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 
-	b, err := io.ReadAll(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(string(b))
+	//fmt.Println(string(b))
 }
