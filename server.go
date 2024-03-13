@@ -13,6 +13,7 @@ import (
 )
 
 type FileServerOpts struct {
+	EncKey            []byte
 	StorageRoot       string
 	PathTransformFunc PathTransformFunc
 	Transport         p2p.Transport
@@ -54,17 +55,6 @@ type MessageStoreFile struct {
 
 type MessageGetFile struct {
 	Key string
-}
-
-func (fs *FileServer) stream(msg *Message) error {
-	var peers []io.Writer
-	for _, peer := range fs.peers {
-		peers = append(peers, peer)
-	}
-
-	mw := io.MultiWriter(peers...)
-
-	return gob.NewEncoder(mw).Encode(msg)
 }
 
 func (fs *FileServer) broadcast(msg *Message) error {
@@ -110,7 +100,8 @@ func (fs *FileServer) Get(key string) (io.Reader, error) {
 		// bytes that we read from the connection.
 		var fileSize int64
 		binary.Read(peer, binary.LittleEndian, &fileSize)
-		n, err := fs.store.Write(key, io.LimitReader(peer, fileSize))
+
+		n, err := fs.store.WriteDecrypt(fs.EncKey, key, io.LimitReader(peer, fileSize))
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +130,7 @@ func (fs *FileServer) Store(key string, r io.Reader) error {
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  key,
-			Size: size,
+			Size: size + 16, // Add 16 bytes for the IV.
 		},
 	}
 
@@ -149,16 +140,19 @@ func (fs *FileServer) Store(key string, r io.Reader) error {
 
 	time.Sleep(5 * time.Millisecond)
 
-	//TODO: Use a multiwriter to write to all peers.
+	peers := []io.Writer{}
 	for _, peer := range fs.peers {
-		peer.Send([]byte{p2p.IncomingStream})
-		n, err := io.Copy(peer, fileBuffer)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("Received and written", n, "bytes to disk.")
+		peers = append(peers, peer)
 	}
+
+	mw := io.MultiWriter(peers...)
+	mw.Write([]byte{p2p.IncomingStream})
+	n, err := copyEncrypt(fs.EncKey, fileBuffer, mw)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("[%s] received and written (%d) bytes to disk.", fs.Transport.Addr(), n)
 
 	return nil
 }
@@ -273,7 +267,7 @@ func (fs *FileServer) bootstrapNetwork() error {
 			continue
 		}
 
-		fmt.Println("attempting to connect remote: ", addr)
+		fmt.Println(fs.Transport.Addr(), "attempting to connect remote: ", addr)
 		go func(addr string) {
 			if err := fs.Transport.Dial(addr); err != nil {
 				log.Printf("Failed to dial %s: %s", addr, err)
