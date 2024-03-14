@@ -67,6 +67,16 @@ type MessageGetFile struct {
 	Key string
 }
 
+type MessageDeleteFile struct {
+	ID  string
+	Key string
+}
+
+type MessageDeleteFileSuccess struct {
+	ID  string
+	Key string
+}
+
 func (fs *FileServer) broadcast(msg *Message) error {
 	buf := new(bytes.Buffer)
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
@@ -169,6 +179,24 @@ func (fs *FileServer) Store(key string, r io.Reader) error {
 	return nil
 }
 
+func (fs *FileServer) Delete(key string) error {
+	// Delete file locally first.
+	err := fs.store.Delete(fs.ID, key)
+	if err != nil {
+		return err
+	}
+
+	// Then broadcast delete message to all peers.
+	msg := Message{
+		Payload: MessageDeleteFile{
+			ID:  fs.ID,
+			Key: hashKey(key),
+		},
+	}
+
+	return fs.broadcast(&msg)
+}
+
 func (fs *FileServer) Stop() {
 	close(fs.quitch)
 }
@@ -214,6 +242,10 @@ func (fs *FileServer) handleMessage(from string, msg *Message) error {
 		return fs.handleMessageStoreFile(from, v)
 	case MessageGetFile:
 		return fs.handleMessageGetFile(from, v)
+	case MessageDeleteFile:
+		return fs.handleMessageDeleteFile(from, v)
+	case MessageDeleteFileSuccess:
+		return fs.handleMessageDeleteFileSuccess(from, v)
 	}
 
 	return nil
@@ -273,6 +305,43 @@ func (fs *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) 
 	return nil
 }
 
+func (fs *FileServer) handleMessageDeleteFile(from string, msg MessageDeleteFile) error {
+	err := fs.store.Delete(msg.ID, msg.Key)
+	if err != nil {
+		fmt.Println("Failed to delete file: ", err)
+		return err
+	}
+
+	peer, ok := fs.peers[from]
+	if !ok {
+		return fmt.Errorf("peer (%s) could not be found.\n", from)
+	}
+
+	confirmMessage := Message{
+		Payload: MessageDeleteFileSuccess{
+			ID:  msg.ID,
+			Key: msg.Key,
+		},
+	}
+
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(confirmMessage); err != nil {
+		return err
+	}
+
+	peer.Send([]byte{p2p.IncomingMessage})
+	if err := peer.Send(buf.Bytes()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (fs *FileServer) handleMessageDeleteFileSuccess(from string, msg MessageDeleteFileSuccess) error {
+	fmt.Printf("[%s] file (%s) has been deleted from peer: %s\n", fs.Transport.Addr(), msg.Key, from)
+	return nil
+}
+
 func (fs *FileServer) bootstrapNetwork() error {
 	for _, addr := range fs.BootstrapNodes {
 		if len(addr) == 0 {
@@ -304,4 +373,6 @@ func (fs *FileServer) Start() error {
 func init() {
 	gob.Register(MessageStoreFile{})
 	gob.Register(MessageGetFile{})
+	gob.Register(MessageDeleteFile{})
+	gob.Register(MessageDeleteFileSuccess{})
 }
